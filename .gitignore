@@ -1,0 +1,23 @@
+# Python virtual environment
+venv/
+
+# Environment files with secrets
+.env
+backend/.env
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+__pycache__/
+
+# Python bytecode
+*.pyc
+
+# Excel files (templates and reports)
+*.xlsx
+*.xls
+*.csv
+
+# OS-specific files
+.DS_Store
+Thumbs.db
