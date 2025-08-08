@@ -1,5 +1,5 @@
-SGO: Sistema de Gestión de Operaciones
-This is the README.md file for the SGO project.
+### SGO: Sistema de Gestión de Operaciones ###
+
 
 <br>
 
