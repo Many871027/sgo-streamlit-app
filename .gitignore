@@ -3,7 +3,7 @@ venv/
 
 # Environment files with secrets
 .env
-backend/.env
+*/.env
 
 # IDE/Editor specific files
 .vscode/

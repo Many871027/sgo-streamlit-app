@@ -4,6 +4,11 @@ import pandas as pd
 from datetime import date, timedelta
 import re
 from io import BytesIO
+import os
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 # --- Page Configuration ---
@@ -16,12 +21,19 @@ st.set_page_config(
 # --- API Configuration ---
 API_URL = "https://sgo-api-service-479752447685.us-central1.run.app"
 
-# --- User Authentication ---
-VALID_USERS = {
-    "supervisores.33": "sgo2025",
-    "ayudante.matutino": "pass123",
-    "ayudante.vespertino": "pass456"
-}
+# --- User Authentication (Secure) ---
+VALID_USERS = {}
+try:
+    # Lee la variable de entorno 'VALID_USERS_JSON'
+    users_json_string = os.environ.get("VALID_USERS_JSON")
+    if users_json_string:
+        # Convierte el texto JSON a un diccionario de Python
+        VALID_USERS = json.loads(users_json_string)
+    else:
+        st.error("Error de configuración: No se han definido los usuarios del sistema.")
+except json.JSONDecodeError:
+    st.error("Error de configuración: El formato de los usuarios no es un JSON válido.")
+
 
 def check_password():
     """Returns `True` if the user is logged in, `False` otherwise."""
