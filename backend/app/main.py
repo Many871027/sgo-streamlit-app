@@ -160,3 +160,30 @@ def delete_cobertura_necesaria(cobertura_id: int, db: Session = Depends(get_db))
     db.delete(db_obj)
     db.commit()
     return
+
+@app.put("/plazas/{plaza_id}", response_model=schemas.Plaza)
+def update_plaza_by_id(plaza_id: str, plaza_data: schemas.PlazaUpdate, db: Session = Depends(database.get_db)):
+    """
+    Actualiza los datos de un trabajador buscando por su 'plaza' (ID).
+    """
+    # 1. Buscar el registro en la base de datos
+    db_plaza = db.query(models.Plaza).filter(models.Plaza.plaza == plaza_id).first()
+
+    # 2. Si no se encuentra, devolver un error 404
+    if db_plaza is None:
+        raise HTTPException(status_code=404, detail="Plaza no encontrada")
+
+    # 3. Actualizar los campos del objeto con los datos recibidos
+    # El método dict(exclude_unset=True) es clave: solo incluye los campos
+    # que realmente se enviaron en la solicitud (ej. solo 'nombre_actual').
+    update_data = plaza_data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_plaza, key, value)
+
+    # 4. Guardar los cambios en la base de datos
+    db.commit()
+    db.refresh(db_plaza)
+
+    # 5. Devolver el registro actualizado
+    return db_plaza
+

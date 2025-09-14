@@ -65,3 +65,14 @@ class CoberturaNecesariaCreate(BaseModel):
 class CoberturaNecesaria(CoberturaNecesariaCreate):
     id: int
     class Config: from_attributes = True
+
+class PlazaUpdate(BaseModel):
+    nombre_actual: Optional[str] = None
+    categoria: Optional[str] = None
+    horario: Optional[str] = None
+    dias_descanso: Optional[str] = None
+    matricula_actual: Optional[str] = None
+    # Añade aquí cualquier otro campo de la tabla 'plazas' que quieras que sea editable
+
+    class Config:
+        orm_mode = True
