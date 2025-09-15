@@ -160,3 +160,78 @@ def delete_cobertura_necesaria(cobertura_id: int, db: Session = Depends(get_db))
     db.delete(db_obj)
     db.commit()
     return
+
+@app.put("/plazas/{plaza_id}", response_model=schemas.PlazaUpdate)
+def update_plaza_by_id(plaza_id: str, plaza_data: schemas.PlazaUpdate, db: Session = Depends(get_db)):
+    """
+    Actualiza los datos de un trabajador buscando por su 'plaza' (ID).
+    """
+    # 1. Buscar el registro en la base de datos
+    db_plaza = db.query(models.Plaza).filter(models.Plaza.plaza == plaza_id).first()
+
+    # 2. Si no se encuentra, devolver un error 404
+    if db_plaza is None:
+        raise HTTPException(status_code=404, detail="Plaza no encontrada")
+
+    # 3. Actualizar los campos del objeto con los datos recibidos
+    # El método dict(exclude_unset=True) es clave: solo incluye los campos
+    # que realmente se enviaron en la solicitud (ej. solo 'nombre_actual').
+    update_data = plaza_data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_plaza, key, value)
+
+    # 4. Guardar los cambios en la base de datos
+    db.commit()
+    db.refresh(db_plaza)
+
+    # 5. Devolver el registro actualizado
+    return db_plaza
+
+@app.post("/plazas/{plaza_id}/asignar-cobertura-temporal", response_model=schemas.Plaza)
+def asignar_cobertura(plaza_id: str, cobertura_data: schemas.CoberturaTemporalCreate, db: Session = Depends(get_db)):
+    db_plaza = db.query(models.Plaza).filter(models.Plaza.plaza == plaza_id).first()
+    if db_plaza is None:
+        raise HTTPException(status_code=404, detail="Plaza no encontrada")
+
+    # 1. Guardar la información del trabajador original en la nueva tabla
+    nueva_cobertura = models.CoberturaTemporal(
+        plaza_id=db_plaza.plaza,
+        nombre_trabajador_original=db_plaza.nombre_actual,
+        fecha_inicio=cobertura_data.fecha_inicio,
+        fecha_fin=cobertura_data.fecha_fin
+    )
+    db.add(nueva_cobertura)
+    
+    # 2. Actualizar la tabla 'plazas' con el nombre del trabajador eventual
+    db_plaza.nombre_actual = cobertura_data.nombre_trabajador_eventual
+    
+    db.commit()
+    db.refresh(db_plaza)
+    return db_plaza
+
+@app.get("/coberturas-temporales/", response_model=List[schemas.CoberturaTemporal])
+def leer_coberturas_activas(db: Session = Depends(get_db)):
+    return db.query(models.CoberturaTemporal).all()
+
+@app.post("/coberturas-temporales/{cobertura_id}/finalizar", response_model=schemas.Plaza)
+def finalizar_cobertura(cobertura_id: int, db: Session = Depends(get_db)):
+    cobertura = db.query(models.CoberturaTemporal).filter(models.CoberturaTemporal.cobertura_id == cobertura_id).first()
+    if cobertura is None:
+        raise HTTPException(status_code=404, detail="Cobertura no encontrada")
+
+    db_plaza = db.query(models.Plaza).filter(models.Plaza.plaza == cobertura.plaza_id).first()
+    if db_plaza is None:
+        # Esto no debería pasar, pero es una buena práctica de seguridad
+        db.delete(cobertura)
+        db.commit()
+        raise HTTPException(status_code=404, detail="La plaza original ya no existe, se eliminó la cobertura.")
+
+    # 1. Restaurar el nombre original en la tabla 'plazas'
+    db_plaza.nombre_actual = cobertura.nombre_trabajador_original
+    
+    # 2. Eliminar el registro de la tabla de coberturas
+    db.delete(cobertura)
+    
+    db.commit()
+    db.refresh(db_plaza)
+    return db_plaza

@@ -65,3 +65,32 @@ class CoberturaNecesariaCreate(BaseModel):
 class CoberturaNecesaria(CoberturaNecesariaCreate):
     id: int
     class Config: from_attributes = True
+
+class PlazaUpdate(BaseModel):
+    nombre_actual: Optional[str] = None
+    categoria: Optional[str] = None
+    horario: Optional[str] = None
+    dias_descanso: Optional[str] = None
+    matricula_actual: Optional[str] = None
+    # Añade aquí cualquier otro campo de la tabla 'plazas' que quieras que sea editable
+
+    class Config:
+        orm_mode = True
+
+
+# --- CoberturaTemporal Schemas ---
+class CoberturaTemporalBase(BaseModel):
+    plaza_id: str
+    nombre_trabajador_original: str
+    fecha_inicio: date
+    fecha_fin: date
+
+class CoberturaTemporal(CoberturaTemporalBase):
+    cobertura_id: int
+    class Config:
+        from_attributes = True
+
+class CoberturaTemporalCreate(BaseModel):
+    nombre_trabajador_eventual: str
+    fecha_inicio: date
+    fecha_fin: date

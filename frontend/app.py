@@ -2,8 +2,19 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import date, timedelta
+import os
+import json
 import re
 from io import BytesIO
+
+
+# Si dotenv no está instalado (como en producción), simplemente lo ignora.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # Esto es normal en un entorno de producción donde no tenemos .env
+    pass
 
 
 # --- Page Configuration ---
@@ -16,12 +27,19 @@ st.set_page_config(
 # --- API Configuration ---
 API_URL = "https://sgo-api-service-479752447685.us-central1.run.app"
 
-# --- User Authentication ---
-VALID_USERS = {
-    "supervisores.33": "sgo2025",
-    "ayudante.matutino": "pass123",
-    "ayudante.vespertino": "pass456"
-}
+# --- User Authentication (Secure) ---
+VALID_USERS = {}
+try:
+    # Lee la variable de entorno 'VALID_USERS_JSON'
+    users_json_string = os.environ.get("VALID_USERS_JSON")
+    if users_json_string:
+        # Convierte el texto JSON a un diccionario de Python
+        VALID_USERS = json.loads(users_json_string)
+    else:
+        st.error("Error de configuración: No se han definido los usuarios del sistema.")
+except json.JSONDecodeError:
+    st.error("Error de configuración: El formato de los usuarios no es un JSON válido.")
+
 
 def check_password():
     """Returns `True` if the user is logged in, `False` otherwise."""
@@ -438,6 +456,170 @@ def generate_overtime_template_report(overtime_to_report, plazas_df):
     except Exception as e:
         st.error(f"Error al generar el reporte: {e}")
         return None
+    
+def manage_existing_plazas():
+    st.subheader("👤 Modificar Datos de un Trabajador")
+
+    response = requests.get(f"{API_URL}/plazas/")
+    if response.status_code == 200:
+        plazas_df = pd.DataFrame(response.json())
+        
+        # --- CORRECCIÓN 1: Forzar la columna 'plaza' a ser de tipo string ---
+        # Esto asegura que pandas y streamlit siempre la traten como texto.
+        plazas_df['plaza'] = plazas_df['plaza'].astype(str)
+
+        st.dataframe(plazas_df)
+
+        plaza_a_modificar = st.selectbox(
+            "Seleccione la plaza del trabajador a modificar:",
+            options=plazas_df['plaza'].tolist(),
+            key="mod_plaza_select"
+        )
+
+        if plaza_a_modificar:
+            # El filtro ahora comparará string con string, lo cual es seguro.
+            trabajador_actual = plazas_df[plazas_df['plaza'] == plaza_a_modificar].iloc[0]
+
+            with st.form("form_modificar_trabajador"):
+                st.write(f"**Modificando Plaza:** {trabajador_actual['plaza']}")
+                
+                nombre = st.text_input("Nombre Completo", value=trabajador_actual['nombre_actual'])
+                categoria = st.text_input("Categoría", value=trabajador_actual['categoria'])
+                # Puedes añadir más campos para editar aquí
+
+                submitted = st.form_submit_button("Guardar Cambios")
+                if submitted:
+                    update_data = {
+                        "nombre_actual": nombre,
+                        "categoria": categoria,
+                    }
+                    
+                    # --- CORRECCIÓN 2 (Depuración): Muestra la URL que se va a llamar ---
+                    # Esta línea es para depurar. Puedes eliminarla una vez que funcione.
+                    url_de_actualizacion = f"{API_URL}/plazas/{plaza_a_modificar}"
+                    st.info(f"Intentando actualizar en la URL: {url_de_actualizacion}")
+
+                    update_response = requests.put(
+                        url_de_actualizacion,
+                        json=update_data
+                    )
+                    
+                    if update_response.status_code == 200:
+                        st.success("¡Trabajador actualizado correctamente!")
+                        # Limpia la cache para que la próxima recarga muestre los datos nuevos
+                        st.cache_data.clear() 
+                        st.rerun()
+                    else:
+                        st.error(f"Error al actualizar. Código: {update_response.status_code}. Detalles: {update_response.text}")
+    else:
+        st.error("No se pudo cargar la lista de plazas.")
+
+def create_new_plaza():
+    st.subheader("➕ Registrar un Nuevo Trabajador")
+
+    with st.form("form_nuevo_trabajador"):
+        st.write("Ingrese los datos del nuevo trabajador:")
+        plaza = st.text_input("Plaza (Clave Única)", help="Ej: HGS12345")
+        nombre = st.text_input("Nombre Completo")
+        categoria = st.text_input("Categoría")
+        turno = st.selectbox("Turno", ["Matutino", "Vespertino", "Nocturno A", "Nocturno B", "Especial"])
+        # ... (añadir todos los demás campos necesarios)
+
+        submitted = st.form_submit_button("Crear Plaza")
+        if submitted:
+            # Validar que la plaza no esté vacía
+            if not plaza:
+                st.warning("El campo 'Plaza' es obligatorio.")
+                return
+
+            new_plaza_data = {
+                "plaza": plaza,
+                "nombre": nombre,
+                "categoria": categoria,
+                "turno": turno,
+                # ... (resto de campos)
+            }
+            # Llamada a la API para crear (POST request)
+            response = requests.post(f"{API_URL}/plazas/", json=new_plaza_data)
+            if response.status_code == 200:
+                st.success(f"¡Plaza {plaza} creada exitosamente!")
+            else:
+                st.error(f"Error al crear la plaza. Detalles: {response.text}")
+
+def manage_eventuales():
+    st.subheader("🧑‍⚕️ Asignar Cobertura Temporal (Eventual)")
+
+    response = requests.get(f"{API_URL}/plazas/")
+    if response.status_code != 200:
+        st.error("No se pudo cargar la lista de plazas.")
+        return
+    
+    plazas_df = pd.DataFrame(response.json())
+    plazas_df['plaza'] = plazas_df['plaza'].astype(str)
+
+    with st.form("form_asignar_eventual"):
+        st.write("Seleccione la plaza a cubrir e ingrese los datos del trabajador eventual.")
+        plaza_a_cubrir = st.selectbox(
+            "Plaza que será cubierta:",
+            options=plazas_df['plaza'].tolist()
+        )
+
+        st.markdown("---")
+        st.write("**Datos del Trabajador Eventual:**")
+        nombre_eventual = st.text_input("Nombre Completo del Eventual")
+        fecha_inicio = st.date_input("Fecha de Inicio de Cobertura")
+        fecha_fin = st.date_input("Fecha de Fin de Cobertura")
+
+        submitted = st.form_submit_button("Asignar Cobertura")
+        if submitted:
+            cobertura_data = {
+                "nombre_trabajador_eventual": nombre_eventual,
+                "fecha_inicio": str(fecha_inicio),
+                "fecha_fin": str(fecha_fin)
+            }
+            response = requests.post(
+                f"{API_URL}/plazas/{plaza_a_cubrir}/asignar-cobertura-temporal", # URL corregida y más clara
+                json=cobertura_data
+            )
+            if response.status_code == 200:
+                st.success(f"¡Cobertura asignada a la plaza {plaza_a_cubrir} exitosamente!")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(f"Error al asignar cobertura. Detalles: {response.text}")
+
+    st.markdown("---")
+    st.subheader("📋 Coberturas Activas")
+    
+    # Esta llamada fallará hasta que implementemos el backend
+    coberturas_response = requests.get(f"{API_URL}/coberturas-temporales/")
+    if coberturas_response.status_code == 200:
+        coberturas_activas = coberturas_response.json()
+        if not coberturas_activas:
+            st.info("No hay coberturas temporales activas en este momento.")
+        else:
+            # Crear un mapa de plaza -> nombre para mostrar
+            plaza_map = plazas_df.set_index('plaza')['nombre_actual'].to_dict()
+
+            for cob in coberturas_activas:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    nombre_original = plaza_map.get(cob['plaza_id'], cob['plaza_id'])
+                    st.write(f"**Plaza:** {cob['plaza_id']}")
+                    st.write(f"  - **Trabajador de Base:** {nombre_original}")
+                    st.write(f"  - **Cubre (Eventual):** {cob['nombre_trabajador_original']}") # Ajustado al modelo
+                    st.write(f"  - **Periodo:** {cob['fecha_inicio']} al {cob['fecha_fin']}")
+                with col2:
+                    if st.button("Finalizar Cobertura", key=f"end_{cob['cobertura_id']}"):
+                        end_response = requests.post(f"{API_URL}/coberturas-temporales/{cob['cobertura_id']}/finalizar")
+                        if end_response.status_code == 200:
+                            st.success("¡Cobertura finalizada! El trabajador original ha sido restaurado.")
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error("Error al finalizar la cobertura.")
+    else:
+        st.warning("No se pudieron cargar las coberturas activas.")
 
 
 # --- Main Application Logic ---
@@ -455,11 +637,14 @@ def main_app():
         st.warning("Could not load employee data from the API.")
     else:
         # --- NEW: Added the Reporting tab ---
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "Registrar Incidencia", "Registrar Sustitución", 
-            "Registrar Tiempo Extra", "Asignar Servicios",
-            "Generar Reportes" # New Tab
-        ])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📝 Pase de Lista",
+    "🔄 Sustituciones",
+    "⏰ Tiempo Extra",
+    "🗺️ Asignación de Servicios",
+    "🗂️ Reportes",  # Anteriormente era la pestaña 5
+    "⚙️ Administración" # Nueva pestaña 6
+])
 
         with tab1:
             st.header("Registro de Incidencias por Turno")
@@ -895,6 +1080,30 @@ def main_app():
                             )
                     else:
                         st.warning("No se encontraron registros de tiempo extra en el período seleccionado.")
+
+        with tab6:
+    # La llamada a la función ahora está correctamente indentada
+            render_admin_panel()
+
+def render_admin_panel():
+    st.title("⚙️ Panel de Administración")
+    st.write("Gestione el personal, plazas y coberturas temporales.")
+
+    # Sub-pestañas para organizar las funciones de admin
+    admin_tab1, admin_tab2, admin_tab3 = st.tabs([
+        "👤 Gestionar Plazas",
+        "➕ Crear Nueva Plaza",
+        "🧑‍⚕️ Gestionar Trabajadores Eventuales"
+    ])
+
+    with admin_tab1:
+        manage_existing_plazas()
+
+    with admin_tab2:
+        create_new_plaza()
+
+    with admin_tab3:
+        manage_eventuales()
 
 
 # --- Main Script Execution ---
