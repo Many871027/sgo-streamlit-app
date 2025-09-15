@@ -544,14 +544,14 @@ def create_new_plaza():
 def manage_eventuales():
     st.subheader("🧑‍⚕️ Asignar Cobertura Temporal (Eventual)")
 
-    # 1. Obtener plazas activas
     response = requests.get(f"{API_URL}/plazas/")
     if response.status_code != 200:
         st.error("No se pudo cargar la lista de plazas.")
         return
+    
     plazas_df = pd.DataFrame(response.json())
+    plazas_df['plaza'] = plazas_df['plaza'].astype(str)
 
-    # 2. Formulario para iniciar la cobertura
     with st.form("form_asignar_eventual"):
         st.write("Seleccione la plaza a cubrir e ingrese los datos del trabajador eventual.")
         plaza_a_cubrir = st.selectbox(
@@ -562,58 +562,59 @@ def manage_eventuales():
         st.markdown("---")
         st.write("**Datos del Trabajador Eventual:**")
         nombre_eventual = st.text_input("Nombre Completo del Eventual")
-        # Podrían añadirse más campos si es necesario (ej. No. de contrato eventual)
         fecha_inicio = st.date_input("Fecha de Inicio de Cobertura")
         fecha_fin = st.date_input("Fecha de Fin de Cobertura")
 
         submitted = st.form_submit_button("Asignar Cobertura")
         if submitted:
-            # 3. Llamada a un endpoint especializado en el backend
             cobertura_data = {
-                "nombre_eventual": nombre_eventual,
+                "nombre_trabajador_eventual": nombre_eventual,
                 "fecha_inicio": str(fecha_inicio),
                 "fecha_fin": str(fecha_fin)
             }
-            # Se recomienda un endpoint específico para esta lógica compleja
             response = requests.post(
-                f"{API_URL}/plazas/{plaza_a_cubrir}/iniciar-cobertura",
+                f"{API_URL}/plazas/{plaza_a_cubrir}/asignar-cobertura-temporal", # URL corregida y más clara
                 json=cobertura_data
             )
             if response.status_code == 200:
                 st.success(f"¡Cobertura asignada a la plaza {plaza_a_cubrir} exitosamente!")
+                st.cache_data.clear()
+                st.rerun()
             else:
                 st.error(f"Error al asignar cobertura. Detalles: {response.text}")
 
     st.markdown("---")
     st.subheader("📋 Coberturas Activas")
-    # 4. Visualizar y finalizar coberturas
-    # El backend debería tener un endpoint GET /coberturas-activas/
-    coberturas_response = requests.get(f"{API_URL}/coberturas-activas/")
+    
+    # Esta llamada fallará hasta que implementemos el backend
+    coberturas_response = requests.get(f"{API_URL}/coberturas-temporales/")
     if coberturas_response.status_code == 200:
         coberturas_activas = coberturas_response.json()
         if not coberturas_activas:
             st.info("No hay coberturas temporales activas en este momento.")
         else:
+            # Crear un mapa de plaza -> nombre para mostrar
+            plaza_map = plazas_df.set_index('plaza')['nombre_actual'].to_dict()
+
             for cob in coberturas_activas:
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    st.write(f"**Plaza:** {cob['plaza']}")
-                    st.write(f"  - **Cubre:** {cob['nombre_original']}")
-                    st.write(f"  - **Eventual:** {cob['nombre_eventual']}")
+                    nombre_original = plaza_map.get(cob['plaza_id'], cob['plaza_id'])
+                    st.write(f"**Plaza:** {cob['plaza_id']}")
+                    st.write(f"  - **Trabajador de Base:** {nombre_original}")
+                    st.write(f"  - **Cubre (Eventual):** {cob['nombre_trabajador_original']}") # Ajustado al modelo
                     st.write(f"  - **Periodo:** {cob['fecha_inicio']} al {cob['fecha_fin']}")
                 with col2:
-                    if st.button("Finalizar Cobertura", key=f"end_{cob['id']}"):
-                        # 5. Llamada a la API para revertir la cobertura
-                        end_response = requests.post(f"{API_URL}/coberturas/{cob['id']}/finalizar")
+                    if st.button("Finalizar Cobertura", key=f"end_{cob['cobertura_id']}"):
+                        end_response = requests.post(f"{API_URL}/coberturas-temporales/{cob['cobertura_id']}/finalizar")
                         if end_response.status_code == 200:
                             st.success("¡Cobertura finalizada! El trabajador original ha sido restaurado.")
-                            st.experimental_rerun()
+                            st.cache_data.clear()
+                            st.rerun()
                         else:
                             st.error("Error al finalizar la cobertura.")
     else:
         st.warning("No se pudieron cargar las coberturas activas.")
-
-
 
 
 # --- Main Application Logic ---

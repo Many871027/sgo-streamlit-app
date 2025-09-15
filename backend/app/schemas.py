@@ -76,3 +76,21 @@ class PlazaUpdate(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+# --- CoberturaTemporal Schemas ---
+class CoberturaTemporalBase(BaseModel):
+    plaza_id: str
+    nombre_trabajador_original: str
+    fecha_inicio: date
+    fecha_fin: date
+
+class CoberturaTemporal(CoberturaTemporalBase):
+    cobertura_id: int
+    class Config:
+        from_attributes = True
+
+class CoberturaTemporalCreate(BaseModel):
+    nombre_trabajador_eventual: str
+    fecha_inicio: date
+    fecha_fin: date

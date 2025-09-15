@@ -187,3 +187,51 @@ def update_plaza_by_id(plaza_id: str, plaza_data: schemas.PlazaUpdate, db: Sessi
     # 5. Devolver el registro actualizado
     return db_plaza
 
+@app.post("/plazas/{plaza_id}/asignar-cobertura-temporal", response_model=schemas.Plaza)
+def asignar_cobertura(plaza_id: str, cobertura_data: schemas.CoberturaTemporalCreate, db: Session = Depends(get_db)):
+    db_plaza = db.query(models.Plaza).filter(models.Plaza.plaza == plaza_id).first()
+    if db_plaza is None:
+        raise HTTPException(status_code=404, detail="Plaza no encontrada")
+
+    # 1. Guardar la información del trabajador original en la nueva tabla
+    nueva_cobertura = models.CoberturaTemporal(
+        plaza_id=db_plaza.plaza,
+        nombre_trabajador_original=db_plaza.nombre_actual,
+        fecha_inicio=cobertura_data.fecha_inicio,
+        fecha_fin=cobertura_data.fecha_fin
+    )
+    db.add(nueva_cobertura)
+    
+    # 2. Actualizar la tabla 'plazas' con el nombre del trabajador eventual
+    db_plaza.nombre_actual = cobertura_data.nombre_trabajador_eventual
+    
+    db.commit()
+    db.refresh(db_plaza)
+    return db_plaza
+
+@app.get("/coberturas-temporales/", response_model=List[schemas.CoberturaTemporal])
+def leer_coberturas_activas(db: Session = Depends(get_db)):
+    return db.query(models.CoberturaTemporal).all()
+
+@app.post("/coberturas-temporales/{cobertura_id}/finalizar", response_model=schemas.Plaza)
+def finalizar_cobertura(cobertura_id: int, db: Session = Depends(get_db)):
+    cobertura = db.query(models.CoberturaTemporal).filter(models.CoberturaTemporal.cobertura_id == cobertura_id).first()
+    if cobertura is None:
+        raise HTTPException(status_code=404, detail="Cobertura no encontrada")
+
+    db_plaza = db.query(models.Plaza).filter(models.Plaza.plaza == cobertura.plaza_id).first()
+    if db_plaza is None:
+        # Esto no debería pasar, pero es una buena práctica de seguridad
+        db.delete(cobertura)
+        db.commit()
+        raise HTTPException(status_code=404, detail="La plaza original ya no existe, se eliminó la cobertura.")
+
+    # 1. Restaurar el nombre original en la tabla 'plazas'
+    db_plaza.nombre_actual = cobertura.nombre_trabajador_original
+    
+    # 2. Eliminar el registro de la tabla de coberturas
+    db.delete(cobertura)
+    
+    db.commit()
+    db.refresh(db_plaza)
+    return db_plaza

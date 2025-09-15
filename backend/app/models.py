@@ -52,3 +52,11 @@ class CoberturaNecesaria(Base):
     plaza_id_ausente = Column(String, ForeignKey('plazas.plaza'))
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
+
+class CoberturaTemporal(Base):
+    __tablename__ = 'coberturas_temporales'
+    cobertura_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    plaza_id = Column(String, ForeignKey('plazas.plaza'))
+    nombre_trabajador_original = Column(String)
+    fecha_inicio = Column(Date, nullable=False)
+    fecha_fin = Column(Date, nullable=False)
