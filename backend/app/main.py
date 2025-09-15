@@ -161,8 +161,8 @@ def delete_cobertura_necesaria(cobertura_id: int, db: Session = Depends(get_db))
     db.commit()
     return
 
-@app.put("/plazas/{plaza_id}", response_model=schemas.Plaza)
-def update_plaza_by_id(plaza_id: str, plaza_data: schemas.PlazaUpdate, db: Session = Depends(database.get_db)):
+@app.put("/plazas/{plaza_id}", response_model=schemas.PlazaUpdate)
+def update_plaza_by_id(plaza_id: str, plaza_data: schemas.PlazaUpdate, db: Session = Depends(get_db)):
     """
     Actualiza los datos de un trabajador buscando por su 'plaza' (ID).
     """

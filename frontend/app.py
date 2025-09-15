@@ -2,11 +2,12 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import date, timedelta
-import re
-from io import BytesIO
 import os
 import json
 from dotenv import load_dotenv
+import re
+from io import BytesIO
+
 
 load_dotenv()
 
@@ -457,6 +458,11 @@ def manage_existing_plazas():
     response = requests.get(f"{API_URL}/plazas/")
     if response.status_code == 200:
         plazas_df = pd.DataFrame(response.json())
+        
+        # --- CORRECCIÓN 1: Forzar la columna 'plaza' a ser de tipo string ---
+        # Esto asegura que pandas y streamlit siempre la traten como texto.
+        plazas_df['plaza'] = plazas_df['plaza'].astype(str)
+
         st.dataframe(plazas_df)
 
         plaza_a_modificar = st.selectbox(
@@ -466,39 +472,42 @@ def manage_existing_plazas():
         )
 
         if plaza_a_modificar:
+            # El filtro ahora comparará string con string, lo cual es seguro.
             trabajador_actual = plazas_df[plazas_df['plaza'] == plaza_a_modificar].iloc[0]
 
             with st.form("form_modificar_trabajador"):
                 st.write(f"**Modificando Plaza:** {trabajador_actual['plaza']}")
                 
-                # --- CORRECCIÓN AQUÍ ---
-                # Se usa 'nombre_actual' en lugar de 'nombre'
                 nombre = st.text_input("Nombre Completo", value=trabajador_actual['nombre_actual'])
-                
                 categoria = st.text_input("Categoría", value=trabajador_actual['categoria'])
-                # ... (puedes añadir todos los demás campos aquí para que sean modificables)
+                # Puedes añadir más campos para editar aquí
 
                 submitted = st.form_submit_button("Guardar Cambios")
                 if submitted:
                     update_data = {
-                        # --- CORRECCIÓN AQUÍ ---
-                        # El JSON enviado a la API también debe usar 'nombre_actual'
                         "nombre_actual": nombre,
                         "categoria": categoria,
-                        # ... (resto de campos)
                     }
+                    
+                    # --- CORRECCIÓN 2 (Depuración): Muestra la URL que se va a llamar ---
+                    # Esta línea es para depurar. Puedes eliminarla una vez que funcione.
+                    url_de_actualizacion = f"{API_URL}/plazas/{plaza_a_modificar}"
+                    st.info(f"Intentando actualizar en la URL: {url_de_actualizacion}")
+
                     update_response = requests.put(
-                        f"{API_URL}/plazas/{plaza_a_modificar}",
+                        url_de_actualizacion,
                         json=update_data
                     )
+                    
                     if update_response.status_code == 200:
                         st.success("¡Trabajador actualizado correctamente!")
-                        st.rerun() # Usar st.rerun() es la forma más moderna
+                        # Limpia la cache para que la próxima recarga muestre los datos nuevos
+                        st.cache_data.clear() 
+                        st.rerun()
                     else:
-                        st.error("Error al actualizar. Detalles: " + update_response.text)
+                        st.error(f"Error al actualizar. Código: {update_response.status_code}. Detalles: {update_response.text}")
     else:
         st.error("No se pudo cargar la lista de plazas.")
-
 
 def create_new_plaza():
     st.subheader("➕ Registrar un Nuevo Trabajador")
