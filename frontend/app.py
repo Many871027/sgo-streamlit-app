@@ -4,12 +4,17 @@ import pandas as pd
 from datetime import date, timedelta
 import os
 import json
-from dotenv import load_dotenv
 import re
 from io import BytesIO
 
 
-load_dotenv()
+# Si dotenv no está instalado (como en producción), simplemente lo ignora.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # Esto es normal en un entorno de producción donde no tenemos .env
+    pass
 
 
 # --- Page Configuration ---
